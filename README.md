@@ -28,14 +28,4 @@ Note: The constructor should be payable if you send value.
 以及这个address.balance 是直接加到address上，和我之前设置的struct里的amount应该不是同一个东西？
 
 6.
-在function onSend(uint balance, address a, bool isSuccess) public{
-        if(isSuccess){
-            bool flag = a.call("onSend", balance, a, true);
-            if(flag)
-            {
-                managedContracts[a] = managedContracts[a] - balance;
-            }
-        }
-    }
-中analysis提示
-Potential Violation of Checks-Effects-Interaction pattern in CommunicatorSend.onSend(uint256,address,bool): Could potentially lead to re-entrancy vulnerability. 
+在function onSend中analysis提示 Potential Violation of Checks-Effects-Interaction pattern in CommunicatorSend.onSend(uint256,address,bool): Could potentially lead to re-entrancy vulnerability. 
