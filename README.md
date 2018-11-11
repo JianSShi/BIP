@@ -17,15 +17,10 @@ Note: The constructor should be payable if you send value.
 3. msg.sender
 本来是想通过msg.sender来调取该地址的amount，但是在remix debug该如何引入msg.sender? 因为不知道该如果给入这个msg。sender我目前是直接在function里面给address这个入参，然后通过比较该地址的amount是否大于要转出的额度进行判断。
 
-4.
-通过sender call 了communicatorSend的requestSend function，而且也能把要转出的balance先转到sender里。
-在这个function中调用communicatorReceive中的requestReceive function(把balance转到receiver) 这步出现错误。显示：
-0x0 Transaction mined but execution failed. (我现在在尝试判断是否因为gas 导致这个问题)
-想请教大家该如何解决。
+4. 通过sender call 了communicatorSend的requestSend function，而且也能把要转出的balance先转到sender里。
+在这个function中调用communicatorReceive中的requestReceive function(把balance转到receiver) 这步出现错误。显示：0x0 Transaction mined but execution failed. (我现在在尝试判断是否因为gas 导致这个问题) 想请教大家该如何解决。
 
-5. contracts[b].call.value(balance)()
-我能理解是通过call把balance加到contracts[b]这个地址。但是一直很困恼不知道这个balance是谁给付出的。
+5. contracts[b].call.value(balance)() 我能理解是通过call把balance加到contracts[b]这个地址。但是一直很困恼不知道这个balance是谁给付出的。
 以及这个address.balance 是直接加到address上，和我之前设置的struct里的amount应该不是同一个东西？
 
-6.
-在function onSend中analysis提示 Potential Violation of Checks-Effects-Interaction pattern in CommunicatorSend.onSend(uint256,address,bool): Could potentially lead to re-entrancy vulnerability. 
+6. 在function onSend中analysis提示 Potential Violation of Checks-Effects-Interaction pattern in CommunicatorSend.onSend(uint256,address,bool): Could potentially lead to re-entrancy vulnerability. 
