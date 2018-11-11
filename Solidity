@@ -3,8 +3,6 @@ pragma solidity ^0.4.22;
 contract Sender{
     address cAddr = 0x72bA7d8E73Fe8Eb666Ea66babC8116a41bFb10e2;
     CommunicatorSend cSender = new CommunicatorSend(cAddr);
-    address cBddr = 0x72bA7d8E73Fe8EB666eA66babC8116A41bfb10e3;
-    CommunicatorReceiver commR = new CommunicatorReceiver(cBddr);
     mapping(address => User) records;
     
     struct User{
@@ -51,7 +49,7 @@ contract CommunicatorSend{
     address public comaddress;
     
     address cBddr = 0x72bA7d8E73Fe8EB666eA66babC8116A41bfb10e3;
-    CommunicatorReceiver commR = CommunicatorReceiver(cBddr);
+    CommunicatorReceiver commR = new CommunicatorReceiver(cBddr);
     
     constructor(address input) public payable { 
         comaddress = input; 
