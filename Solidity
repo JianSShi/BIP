@@ -1,179 +1,155 @@
 pragma solidity ^0.4.22;
 
 contract Users{
-    
+
     struct User{
         address addr;
         string name;
         uint amount;
     }
-    
+
     mapping(address => User) records;
     address cAddr = 0x72bA7d8E73Fe8Eb666Ea66babC8116a41bFb10e2;
     address cBddr = 0x72bA7d8E73Fe8EB666eA66babC8116A41bfb10e3;
-    CommunicatorSend cSender = new CommunicatorSend(cAddr);
     CommunicatorReceiver commR = new CommunicatorReceiver(cBddr);
-    
+    CommunicatorSend cSender = new CommunicatorSend(commR);
+
+    constructor() public payable{
+
+    }
+
     Sender sender = new Sender(cSender);
-    Receiver receiver = new Receiver();
-    
-    function createUser(address addr, string name, uint amount) public{
+
+    Receiver receiver = new Receiver(commR);
+
+    function createUser(address addr, string name, uint amount) payable public {
         User memory user = User(addr, name, amount);
         records[addr] = user;
     }
-    
-    function sendToB(address a, uint balance, string recName) public returns (bool){
+
+    function sendToB(address a, uint balance, string recName) payable public returns (bool){
         uint t = records[a].amount;
-        if (t < balance) 
-            return false; 
+        if (t < balance)
+            return false;
         else{
-            sender.comToSend(cSender, balance, recName);
-        
+            sender.register(a, balance);
+            sender.comToSend(recName, balance);
+            records[a].amount = sender.getBalance(a);
         }
     }
-    
+
+    // The input should be User, but I have no idea of how to test that
+    // Thus, I change to the directly passing the address and name of that user.
+    function registerRec(address a, string recName, uint balance) payable public{
+        receiver.register(a, recName, balance);
+    }
+
     function getBalance(address addr) public view returns(uint){
         return records[addr].amount;
     }
-    
+
 }
 
 contract Sender{
-    mapping(address => User) records;
-    
-    struct User{
-        address addr;
-        string name;
-        uint amount;
+    mapping(address => uint) record;
+    CommunicatorSend comSend;
+
+    constructor(CommunicatorSend cSender) public payable {
+        uint amounts = 100000;
+        cSender.registerAddress(address(this), amounts);
+        comSend = cSender;
     }
-    
-    constructor(CommunicatorSend cSender) public payable { 
-        uint amount = 100000;
-        cSender.registerAddress(address(this), amount);
+
+    function register(address a, uint balance) public{
+        record[a] = balance;
     }
-    
-    function createUser(address addr, string name, uint amount) public payable{
-        User memory user = User(addr, name, amount);
-        records[addr] = user;
+
+    function comToSend(string recName, uint balance) payable public {
+        comSend.requestSend(address(this), recName, balance);
     }
-    
-    function sendToCom(uint balance, string recName) public returns(bool){
-        
-    }
-    
-    function comToSend(CommunicatorSend comm, uint balance, string recName) public payable{
-        comm.requestSend(address(this), recName, balance);
-    }
-    
-    function onSend(uint balance, address a, bool isSuccess) public{
+
+    function onSends(uint balance, address a, bool isSuccess) public{
         if(isSuccess){
-            records[a].amount = records[a].amount - balance;
+            record[a] = record[a] - balance;
         }
     }
-    
+
     function getBalance(address addr) public view returns(uint){
-        return records[addr].amount;
+        return record[addr];
     }
-    
+
 }
 
 contract CommunicatorSend{
     mapping(address => uint) managedContracts;
-    address public comaddress;
-    
-    address cBddr = 0x72bA7d8E73Fe8EB666eA66babC8116A41bfb10e3;
-    CommunicatorReceiver commR = new CommunicatorReceiver(cBddr);
-    
-    constructor(address input) public payable { 
-        comaddress = input; 
+    CommunicatorReceiver commR;
+
+    constructor(CommunicatorReceiver cReceiver) public payable {
+        commR = cReceiver;
     }
-    
-    function requestSend(address a, string b, uint balance) public { 
+
+    function requestSend(address a, string b, uint balance) payable public{
         managedContracts[a] = managedContracts[a] + balance; // increase balance to the Sender, Sender pass the balance to the receiver
-        commR.requestReceive(a,b, balance);    
-    } 
-    
-    function onSend(uint balance, address a, bool isSuccess) public{
+        if(commR.requestReceive(a,b, balance,address(this))){
+            onSend(balance, a, true);
+        }
+        else{
+            onSend(balance, a, false);
+        }
+        managedContracts[a] = managedContracts[a] - balance;
+    }
+
+    function onSend(uint balance, address a, bool isSuccess) payable public{
         if(isSuccess){
-            bool flag = a.call("onSend", balance, a, true);
+            bytes4 methodId = bytes4(keccak256("onSends(uint256,address,bool)"));
+            bool flag = a.call(methodId, balance, a, true);
             if(flag)
             {
                 managedContracts[a] = managedContracts[a] - balance;
             }
         }
     }
-    
-    function registerAddress(address addr, uint balance) public payable{
-        managedContracts[addr] = balance;
-    }
-}
 
-
-contract CommunicatorSend{
-    mapping(address => uint) managedContracts;
-    address public comaddress;
-    
-    address cBddr = 0x72bA7d8E73Fe8EB666eA66babC8116A41bfb10e3;
-    CommunicatorReceiver commR = new CommunicatorReceiver(cBddr);
-    
-    constructor(address input) public payable { 
-        comaddress = input; 
-    }
-    
-    function requestSend(address a, string b, uint balance) public { 
-        managedContracts[a] = managedContracts[a] + balance; // increase balance to the Sender, Sender pass the balance to the receiver
-        commR.requestReceive(a,b, balance);    
-    } 
-    
-    function onSend(uint balance, address a, bool isSuccess) public{
-        if(isSuccess){
-            bool flag = a.call("onSend", balance, a, true);
-            if(flag)
-            {
-                managedContracts[a] = managedContracts[a] - balance;
-            }
-        }
-    }
-    
-    function registerAddress(address addr, uint balance) public payable{
+    function registerAddress(address addr, uint balance) payable public{
         managedContracts[addr] = balance;
     }
 }
 
 contract CommunicatorReceiver{
-    mapping(address => uint) managedContracts;
-    mapping(string => address) contracts;
+    mapping(string => address) managedContracts;
+    mapping(string => uint) contracts;
     address public comaddress;
     address cAddr = 0x72bA7d8E73Fe8Eb666Ea66babC8116a41bFb10e2;
     CommunicatorSend commS = CommunicatorSend(cAddr);
-    
-    constructor(address input) public payable { 
-         comaddress = input; 
+
+    constructor(address input) public payable {
+         comaddress = input;
     }
-    
-    function requestReceive(address a, string b, uint balance) public{
-        if (contracts[b].call.value(balance)()) {
-            commS.onSend(balance, a, true);
-        }
-        else{
-            commS.onSend(balance, a, false);
-        }
+
+    function requestReceive(address a, string b, uint balance, address comSender) payable public returns(bool){
+        contracts[b] = contracts[b] + balance;
+        bytes4 methodId = bytes4(keccak256("onSend(uint256,address,bool)"));
+        return comSender.call(methodId,balance, a, true);
     }
-    
-    function registerName(string name, address addr) public payable{
-        contracts[name] = addr;
+
+    function registerAddress(address a, string reciver, uint balance) public{
+        contracts[reciver] = balance;
+        managedContracts[reciver] = a;
     }
 }
 
 contract Receiver{
     CommunicatorReceiver cb;
-    
-    constructor() public payable { 
+
+    constructor(CommunicatorReceiver commR) public payable {
+        cb = commR;
     }
 
-    function registerContractToCommunicator() public{
-        address cBddr = 0x72bA7d8E73Fe8EB666eA66babC8116A41bfb10e3;
-        cb = CommunicatorReceiver(cBddr);
-        cb.registerName("receiver b", address(this));
+    mapping(string => address) receiverRecords;
+
+    function register(address a, string name, uint balance) payable public{
+        receiverRecords[name] = a;
+        cb.registerAddress(a,name,balance);
     }
+
 }
