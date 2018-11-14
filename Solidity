@@ -2,14 +2,8 @@ pragma solidity ^0.4.22;
 
 contract Users{
 
-    struct User{
-        address addr;
-        string name;
-        uint amount;
-    }
-
-    mapping(address => User) records;
-    address cAddr = 0x72bA7d8E73Fe8Eb666Ea66babC8116a41bFb10e2;
+    mapping(address => uint) records;
+    mapping(string => address) receiverRecords;
     address cBddr = 0x72bA7d8E73Fe8EB666eA66babC8116A41bfb10e3;
     CommunicatorReceiver commR = new CommunicatorReceiver(cBddr);
     CommunicatorSend cSender = new CommunicatorSend(commR);
@@ -22,32 +16,33 @@ contract Users{
 
     Receiver receiver = new Receiver(commR);
 
-    function createUser(address addr, string name, uint amount) payable public {
-        User memory user = User(addr, name, amount);
-        records[addr] = user;
+    function createUser(string name) payable public {
+        records[msg.sender] = msg.value;
+        receiverRecords[name] = msg.sender;
     }
 
     function sendToB(address a, uint balance, string recName) payable public returns (bool){
-        uint t = records[a].amount;
+        uint t = records[a];
         if (t < balance)
             return false;
         else{
-            sender.register(a, balance);
-            sender.comToSend(recName, balance);
-            records[a].amount = sender.getBalance(a);
+            sender.register(a, t);
+            sender.comToSend(recName, balance, a);
+            uint balAfter = sender.getBalance(a);
+            records[a] = balAfter;
+            address reciverAd = receiverRecords[recName];
+            records[reciverAd] = receiver.getBalance(recName);
         }
     }
 
-    // The input should be User, but I have no idea of how to test that
-    // Thus, I change to the directly passing the address and name of that user.
-    function registerRec(address a, string recName, uint balance) payable public{
-        receiver.register(a, recName, balance);
+    function registerRec(address a, string recName) payable public{
+        receiver.register(a, recName, records[a]);
     }
 
     function getBalance(address addr) public view returns(uint){
-        return records[addr].amount;
+        return records[addr];
     }
-
+    
 }
 
 contract Sender{
@@ -55,7 +50,7 @@ contract Sender{
     CommunicatorSend comSend;
 
     constructor(CommunicatorSend cSender) public payable {
-        uint amounts = 100000;
+        uint amounts = 100000000;
         cSender.registerAddress(address(this), amounts);
         comSend = cSender;
     }
@@ -64,13 +59,13 @@ contract Sender{
         record[a] = balance;
     }
 
-    function comToSend(string recName, uint balance) payable public {
-        comSend.requestSend(address(this), recName, balance);
+    function comToSend(string recName, uint balance, address input) payable public {
+        comSend.requestSend(address(this), recName, balance, input);
     }
 
-    function onSends(uint balance, address a, bool isSuccess) public{
+    function onSends(uint balance, bool isSuccess, address input) public{
         if(isSuccess){
-            record[a] = record[a] - balance;
+            record[input] = record[input] - balance;
         }
     }
 
@@ -88,25 +83,23 @@ contract CommunicatorSend{
         commR = cReceiver;
     }
 
-    function requestSend(address a, string b, uint balance) payable public{
+    function requestSend(address a, string b, uint balance, address input) payable public{
         managedContracts[a] = managedContracts[a] + balance; // increase balance to the Sender, Sender pass the balance to the receiver
-        if(commR.requestReceive(a,b, balance,address(this))){
-            onSend(balance, a, true);
+        if(commR.requestReceive(b, balance)){
+            onSend(balance, a, true, input);
         }
-        else{
-            onSend(balance, a, false);
-        }
-        managedContracts[a] = managedContracts[a] - balance;
     }
 
-    function onSend(uint balance, address a, bool isSuccess) payable public{
+    function onSend(uint balance, address a, bool isSuccess, address input) payable public{
         if(isSuccess){
-            bytes4 methodId = bytes4(keccak256("onSends(uint256,address,bool)"));
-            bool flag = a.call(methodId, balance, a, true);
-            if(flag)
-            {
-                managedContracts[a] = managedContracts[a] - balance;
-            }
+           //bytes4 methodId = bytes4(keccak256("onSends(uint256,bool, address)"));
+            //bool flag = a.call(methodId, balance, true, input);
+            //if(flag)
+        //    {
+         //       managedContracts[a] = managedContracts[a] - balance;
+          //  }
+          Sender se = Sender(a);
+          se.onSends(balance,true,input);
         }
     }
 
@@ -116,8 +109,14 @@ contract CommunicatorSend{
 }
 
 contract CommunicatorReceiver{
-    mapping(string => address) managedContracts;
-    mapping(string => uint) contracts;
+    struct User{
+        address addr;
+        string name;
+        uint amount;
+    }
+    address public rr;
+    
+    mapping(string => User) contracts;
     address public comaddress;
     address cAddr = 0x72bA7d8E73Fe8Eb666Ea66babC8116a41bFb10e2;
     CommunicatorSend commS = CommunicatorSend(cAddr);
@@ -126,16 +125,22 @@ contract CommunicatorReceiver{
          comaddress = input;
     }
 
-    function requestReceive(address a, string b, uint balance, address comSender) payable public returns(bool){
-        contracts[b] = contracts[b] + balance;
-        bytes4 methodId = bytes4(keccak256("onSend(uint256,address,bool)"));
-        return comSender.call(methodId,balance, a, true);
+   function requestReceive(string b, uint balance) payable public returns(bool){
+        contracts[b].amount = contracts[b].amount + balance;
+        uint test = contracts[b].amount;
+       // bytes4 methodId = bytes4(keccak256("onSend(uint256,address,bool,address)"));
+        //if(comSender.call(methodId,balance, a, true, input)){
+        Receiver re = Receiver(rr);
+        re.updateBalance(b, test);
+        return true;
     }
 
-    function registerAddress(address a, string reciver, uint balance) public{
-        contracts[reciver] = balance;
-        managedContracts[reciver] = a;
+    function registerAddress(address a, string reciver, uint balance, address t) public{
+        User memory user = User(a, reciver, balance);
+        contracts[reciver] = user;
+        rr = t;
     }
+    
 }
 
 contract Receiver{
@@ -146,10 +151,20 @@ contract Receiver{
     }
 
     mapping(string => address) receiverRecords;
+    mapping(string => uint) reRecords;
 
     function register(address a, string name, uint balance) payable public{
         receiverRecords[name] = a;
-        cb.registerAddress(a,name,balance);
+        reRecords[name] = balance;
+        cb.registerAddress(a,name,balance,address(this));
+    }
+    
+    function getBalance(string name) payable public returns(uint){
+        return reRecords[name];
+    }
+    
+     function updateBalance(string name, uint balance) payable public{
+        reRecords[name] = balance;
     }
 
 }
