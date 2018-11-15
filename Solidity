@@ -9,7 +9,6 @@ contract Users{
     CommunicatorSend cSender = new CommunicatorSend(commR);
 
     constructor() public payable{
-
     }
 
     Sender sender = new Sender(cSender);
@@ -21,18 +20,18 @@ contract Users{
         receiverRecords[name] = msg.sender;
     }
 
-    function sendToB(address a, uint balance, string recName) payable public returns (bool){
+    function sendToB(address a, uint balance, string recName) payable public{
         uint t = records[a];
-        if (t < balance)
-            return false;
-        else{
-            sender.register(a, t);
-            sender.comToSend(recName, balance, a);
-            uint balAfter = sender.getBalance(a);
-            records[a] = balAfter;
-            address reciverAd = receiverRecords[recName];
-            records[reciverAd] = receiver.getBalance(recName);
-        }
+        require(t >= balance);
+        
+        sender.register(a, t);
+        sender.comToSend(recName, balance, a);
+        
+        uint balAfter = sender.getBalance(a);
+        address reciverAd = receiverRecords[recName];
+        
+        records[a] = balAfter;
+        records[reciverAd] = receiver.getBalance(recName);
     }
 
     function registerRec(address a, string recName) payable public{
@@ -59,7 +58,7 @@ contract Sender{
         record[a] = balance;
     }
 
-    function comToSend(string recName, uint balance, address input) payable public {
+    function comToSend(string recName, uint balance, address input) payable public{
         comSend.requestSend(address(this), recName, balance, input);
     }
 
@@ -87,6 +86,7 @@ contract CommunicatorSend{
         managedContracts[a] = managedContracts[a] + balance; // increase balance to the Sender, Sender pass the balance to the receiver
         if(commR.requestReceive(b, balance)){
             onSend(balance, a, true, input);
+            balance = 0;
         }
     }
 
@@ -98,6 +98,7 @@ contract CommunicatorSend{
         //    {
          //       managedContracts[a] = managedContracts[a] - balance;
           //  }
+          managedContracts[a] = managedContracts[a] - balance;
           Sender se = Sender(a);
           se.onSends(balance,true,input);
         }
