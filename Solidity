@@ -2,8 +2,10 @@ pragma solidity ^0.4.22;
 
 contract Users{
 
+    // records and receiverRecords to store the user's address, string and balance
     mapping(address => uint) records;
     mapping(string => address) receiverRecords;
+    
     address cBddr = 0x72bA7d8E73Fe8EB666eA66babC8116A41bfb10e3;
     CommunicatorReceiver commR = new CommunicatorReceiver(cBddr);
     CommunicatorSend cSender = new CommunicatorSend(commR);
@@ -12,32 +14,37 @@ contract Users{
     }
 
     Sender sender = new Sender(cSender);
-
     Receiver receiver = new Receiver(commR);
 
+    // Creating user and store them at the map
     function createUser(string name) payable public {
         records[msg.sender] = msg.value;
         receiverRecords[name] = msg.sender;
     }
 
-    function sendToB(address a, uint balance, string recName) payable public{
-        uint t = records[a];
+    // Send balance to the receiver user
+    function sendToB(address addr, uint balance, string recName) payable public{
+        uint t = records[addr];
+        // whether the sender user has enough balance
         require(t >= balance);
         
-        sender.register(a, t);
-        sender.comToSend(recName, balance, a);
+        //register the sender user to the sender contract
+        sender.register(addr, t);
+        sender.comToSend(recName, balance, addr);
         
-        uint balAfter = sender.getBalance(a);
-        address reciverAd = receiverRecords[recName];
-        
-        records[a] = balAfter;
+        //update balance after transaction
+        uint balAfter = sender.getBalance(addr); // sender user's new balance is getting from the what is store at the sender contract
+        address reciverAd = receiverRecords[recName]; // receiver user's new balance is geting from the reciver contract
+        records[addr] = balAfter;
         records[reciverAd] = receiver.getBalance(recName);
     }
 
-    function registerRec(address a, string recName) payable public{
-        receiver.register(a, recName, records[a]);
+    // Register the user to the Reciver contract
+    function registerRec(address addr, string recName) payable public{
+        receiver.register(addr, recName, records[addr]);
     }
 
+    // Testing wheter the user's balance has been update
     function getBalance(address addr) public view returns(uint){
         return records[addr];
     }
@@ -45,36 +52,43 @@ contract Users{
 }
 
 contract Sender{
+    // record map is store the user who is sending balance to other user 
     mapping(address => uint) record;
     CommunicatorSend comSend;
 
+    // register the sender to the CommunicatorSend and set the original amount
     constructor(CommunicatorSend cSender) public payable {
         uint amounts = 100000000;
         cSender.registerAddress(address(this), amounts);
         comSend = cSender;
     }
 
-    function register(address a, uint balance) public{
-        record[a] = balance;
+    // Sender calling the CommunicatorSend's function to pass the balance to the CommunicatorSend
+    function comToSend(string name, uint balance, address senderAd) payable public{
+        comSend.requestSend(address(this), name, balance, senderAd);
     }
-
-    function comToSend(string recName, uint balance, address input) payable public{
-        comSend.requestSend(address(this), recName, balance, input);
-    }
-
-    function onSends(uint balance, bool isSuccess, address input) public{
+    
+    // If the transaction success, update the user balance
+    function onSends(uint balance, bool isSuccess, address senderAd) public{
         if(isSuccess){
-            record[input] = record[input] - balance;
+            record[senderAd] = record[senderAd] - balance;
         }
     }
-
+    
+    //Get function to get the user's new balance
     function getBalance(address addr) public view returns(uint){
         return record[addr];
+    }
+    
+     // register the user to the Sender contract
+    function register(address a, uint balance) public{
+        record[a] = balance;
     }
 
 }
 
 contract CommunicatorSend{
+    //managedContracts map store Sender's address and balance
     mapping(address => uint) managedContracts;
     CommunicatorReceiver commR;
 
@@ -82,15 +96,20 @@ contract CommunicatorSend{
         commR = cReceiver;
     }
 
-    function requestSend(address a, string b, uint balance, address input) payable public{
-        managedContracts[a] = managedContracts[a] + balance; // increase balance to the Sender, Sender pass the balance to the receiver
+    //Call the CommunicatorReceiver to pass the balance to the Receiver
+    function requestSend(address addr, string b, uint balance, address senderAd) payable public{
+       // increase balance to the Sender, Sender pass the balance to the receiver
+        managedContracts[addr] = managedContracts[addr] + balance; 
+        // When the CommunicatorReceiver successfuly send the balance to the receiver
+        // call the onSend function to return message
         if(commR.requestReceive(b, balance)){
-            onSend(balance, a, true, input);
+            onSend(balance, addr, true, senderAd);
             balance = 0;
         }
     }
 
-    function onSend(uint balance, address a, bool isSuccess, address input) payable public{
+    // Send message to the Sender contract if transaction successed
+    function onSend(uint balance, address addr, bool isSuccess, address senderAd) payable public{
         if(isSuccess){
            //bytes4 methodId = bytes4(keccak256("onSends(uint256,bool, address)"));
             //bool flag = a.call(methodId, balance, true, input);
@@ -98,12 +117,14 @@ contract CommunicatorSend{
         //    {
          //       managedContracts[a] = managedContracts[a] - balance;
           //  }
-          managedContracts[a] = managedContracts[a] - balance;
-          Sender se = Sender(a);
-          se.onSends(balance,true,input);
+          // update the Sender's balance and call the Sender contract
+          managedContracts[addr] = managedContracts[addr] - balance;
+          Sender se = Sender(addr);
+          se.onSends(balance,true,senderAd);
         }
     }
-
+    
+    //Regist the sender contract to the CommunicatorSend
     function registerAddress(address addr, uint balance) payable public{
         managedContracts[addr] = balance;
     }
@@ -115,18 +136,19 @@ contract CommunicatorReceiver{
         string name;
         uint amount;
     }
+    // Reciver contract's address
     address public rr;
     
     mapping(string => User) contracts;
     address public comaddress;
-    address cAddr = 0x72bA7d8E73Fe8Eb666Ea66babC8116a41bFb10e2;
-    CommunicatorSend commS = CommunicatorSend(cAddr);
-
+   
     constructor(address input) public payable {
          comaddress = input;
     }
 
+    // CommunicatorReceiver pass the balance to the Receiver
    function requestReceive(string b, uint balance) payable public returns(bool){
+        // update reciever's balance
         contracts[b].amount = contracts[b].amount + balance;
         uint test = contracts[b].amount;
        // bytes4 methodId = bytes4(keccak256("onSend(uint256,address,bool,address)"));
@@ -135,11 +157,12 @@ contract CommunicatorReceiver{
         re.updateBalance(b, test);
         return true;
     }
-
-    function registerAddress(address a, string reciver, uint balance, address t) public{
+    
+    //Registe reciever to the CommunicatorReceiver
+    function registerAddress(address a, string reciver, uint balance, address recieverAd) public{
         User memory user = User(a, reciver, balance);
         contracts[reciver] = user;
-        rr = t;
+        rr = recieverAd;
     }
     
 }
@@ -150,22 +173,25 @@ contract Receiver{
     constructor(CommunicatorReceiver commR) public payable {
         cb = commR;
     }
-
+    
+    //Store user's info
     mapping(string => address) receiverRecords;
     mapping(string => uint) reRecords;
 
-    function register(address a, string name, uint balance) payable public{
-        receiverRecords[name] = a;
-        reRecords[name] = balance;
-        cb.registerAddress(a,name,balance,address(this));
+    // put user's info to the map
+    function register(address addr, string b, uint balance) payable public{
+        receiverRecords[b] = addr;
+        reRecords[b] = balance;
+        cb.registerAddress(addr,b,balance,address(this));
     }
     
-    function getBalance(string name) payable public returns(uint){
-        return reRecords[name];
+    function getBalance(string b) payable public returns(uint){
+        return reRecords[b];
     }
     
-     function updateBalance(string name, uint balance) payable public{
-        reRecords[name] = balance;
+    //update user's new balance after recive from CommunicatorReceiver
+    function updateBalance(string b, uint balance) payable public{
+        reRecords[b] = balance;
     }
 
 }
