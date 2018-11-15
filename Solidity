@@ -139,6 +139,7 @@ contract CommunicatorReceiver{
     // Reciver contract's address
     address public rr;
     
+    // store the reciver 
     mapping(string => User) contracts;
     address public comaddress;
    
